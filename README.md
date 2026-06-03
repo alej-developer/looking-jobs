@@ -7,29 +7,29 @@
   <img src="https://img.shields.io/badge/Security-Bandit_+_Parameterized_SQL-EF4444?style=for-the-badge&logo=gnuprivacyguard&logoColor=white" alt="Security">
 </p>
 
-# 🚀 ATS Job Automator
+# ATS Job Automator
 
 > **Automated job application engine with a DevSecOps-first architecture.**  
 > Targets corporate ATS portals directly (Lever, Greenhouse) using stealth browser automation, regex-based job classification, and a secure SQLite persistence layer — bypassing LinkedIn entirely.
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [System Architecture](#-system-architecture)
-- [Module Interaction Flow](#-module-interaction-flow)
-- [Cybersecurity Layer](#-cybersecurity-layer)
-- [Benchmarking Metrics](#-benchmarking-metrics)
-- [Quick Start Guide](#-quick-start-guide)
-- [Docker Deployment](#-docker-deployment)
-- [Git Workflow](#-git-workflow)
-- [Project Structure](#-project-structure)
-- [Tech Stack](#-tech-stack)
-- [License](#-license)
+- [System Architecture](#system-architecture)
+- [Module Interaction Flow](#module-interaction-flow)
+- [Cybersecurity Layer](#cybersecurity-layer)
+- [Benchmarking Metrics](#benchmarking-metrics)
+- [Quick Start Guide](#quick-start-guide)
+- [Docker Deployment](#docker-deployment)
+- [Git Workflow](#git-workflow)
+- [Project Structure](#project-structure)
+- [Tech Stack](#tech-stack)
+- [License](#license)
 
 ---
 
-## 🏗 System Architecture
+## System Architecture
 
 The system follows a **pipeline architecture** with four decoupled modules, each with a single responsibility:
 
@@ -64,7 +64,7 @@ The system follows a **pipeline architecture** with four decoupled modules, each
 
 ---
 
-## 🔄 Module Interaction Flow
+## Module Interaction Flow
 
 ```mermaid
 flowchart LR
@@ -95,11 +95,11 @@ flowchart LR
 
 ---
 
-## 🔒 Cybersecurity Layer
+## Cybersecurity Layer
 
 Security is embedded at every layer — not bolted on as an afterthought.
 
-### 🕵️ WAF Evasion & Stealth (scraper.py)
+### WAF Evasion & Stealth (scraper.py)
 
 The scraper implements **three layers of anti-detection** to bypass commercial Web Application Firewalls:
 
@@ -115,15 +115,15 @@ Object.defineProperty(navigator, 'webdriver', { get: () => false });
 window.chrome = { runtime: {} };
 ```
 
-### 🛡 SQL Injection Mitigation (database.py)
+### SQL Injection Mitigation (database.py)
 
 All database operations use **parameterized queries** with `?` placeholders — zero string concatenation:
 
 ```python
-# ✅ Safe: parameterized binding
+# [SAFE] Parameterized binding
 cursor.execute("INSERT INTO offers (...) VALUES (?, ?, ?, ...)", (company, title, url, ...))
 
-# ❌ Never used: string formatting
+# [UNSAFE] Never used: string formatting
 cursor.execute(f"INSERT INTO offers (...) VALUES ('{company}', '{title}', ...)")
 ```
 
@@ -132,7 +132,7 @@ Additional defenses:
 - **Python-side validation** via `VALID_STATUSES` frozenset rejects invalid values before they reach SQLite.
 - **UNIQUE constraint** on `url` prevents duplicate entries.
 
-### 🤖 robots.txt Compliance Audit
+### robots.txt Compliance Audit
 
 The scraper targets **Google Search results** — not ATS portals directly — as the initial discovery layer. This design choice means:
 
@@ -140,7 +140,7 @@ The scraper targets **Google Search results** — not ATS portals directly — a
 - **ATS portal pages** (Lever, Greenhouse) are public job postings designed for indexing. These portals explicitly allow crawling of job listing pages via their `robots.txt` (e.g., `lever.co/robots.txt` allows `/jobs/` paths).
 - **No authentication bypass** — the scraper never circumvents login walls or session tokens.
 
-### 🔐 Secrets Management
+### Secrets Management
 
 | Protection | Mechanism |
 |-----------|-----------|
@@ -151,7 +151,7 @@ The scraper targets **Google Search results** — not ATS portals directly — a
 
 ---
 
-## 📊 Benchmarking Metrics
+## Benchmarking Metrics
 
 ### Running the Benchmark
 
@@ -199,7 +199,7 @@ Each run appends a new line — enabling historical performance regression track
 
 ---
 
-## ⚡ Quick Start Guide
+## Quick Start Guide
 
 ### Prerequisites
 
@@ -245,7 +245,7 @@ python benchmark.py
 
 ---
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ### Build and Run
 
@@ -271,9 +271,9 @@ docker run \
 
 The SQLite database `jobs_automation.db` lives inside the `/app/data` directory, which is declared as a Docker `VOLUME`. This ensures:
 
-- ✅ Data survives container restarts and image rebuilds
-- ✅ You can back up the volume independently
-- ✅ Multiple containers can be pointed to the same data
+- Data survives container restarts and image rebuilds
+- You can back up the volume independently
+- Multiple containers can be pointed to the same data
 
 ```bash
 # Inspect the volume
@@ -285,7 +285,7 @@ docker cp ats-bot:/app/data/jobs_automation.db ./backup_jobs.db
 
 ---
 
-## 🔀 Git Workflow
+## Git Workflow
 
 This project follows **Conventional Commits** with **atomic, high-frequency commits** — each commit represents a single logical change:
 
@@ -314,14 +314,14 @@ Every push to `main` triggers three automated jobs:
 
 ```
 Push to main
-    ├── 🔒 Security Audit (Bandit) ──── severity ≥ medium, JSON artifact
-    ├── 🧹 Lint (Flake8) ───────────── max-line 100, complexity 12
-    └── 🧪 Unit Tests (Pytest) ──────── auto-generated .env from template
+    |-- [Security Audit] Bandit -------- severity >= medium, JSON artifact
+    |-- [Lint] Flake8 ------------------ max-line 100, complexity 12
+    +-- [Unit Tests] Pytest ------------ auto-generated .env from template
 ```
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 looking-jobs/
@@ -371,7 +371,7 @@ looking-jobs/
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Category | Technology | Purpose |
 |----------|-----------|---------|
@@ -390,7 +390,7 @@ looking-jobs/
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
 
