@@ -1,0 +1,36 @@
+[project]
+name = "ats-job-automator"
+version = "0.1.0"
+description = "Automated job application engine targeting corporate ATS portals (Workday, Greenhouse, Lever, etc.)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+    "python-dotenv>=1.1.0",
+    "playwright>=1.52.0",
+    "sqlalchemy>=2.0.41",
+    "aiosqlite>=0.21.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.3",
+    "rich>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.11.13",
+    "pre-commit>=4.2.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

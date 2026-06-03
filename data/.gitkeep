@@ -1,0 +1,3 @@
+# data/ directory — Runtime data (databases, exports, etc.)
+# This file exists so Git tracks the directory structure.
+# Actual .db files are git-ignored.

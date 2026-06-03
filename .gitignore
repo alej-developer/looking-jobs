@@ -1,0 +1,87 @@
+# ==============================================================================
+# .gitignore — ATS Job Automation Project
+# Strict security-first configuration: NO secrets, NO data, NO artifacts.
+# ==============================================================================
+
+# ─── Secrets & Environment Variables ─────────────────────────────────────────
+# CRITICAL: Never commit credentials, API keys, or tokens.
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.crt
+
+# ─── Database Files ──────────────────────────────────────────────────────────
+# SQLite databases contain personal/application data.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ─── Python Virtual Environments ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Python Bytecode & Cache ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ─── Distribution / Packaging ────────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+.eggs/
+
+# ─── Playwright / Browser Automation ─────────────────────────────────────────
+# Browser binaries, traces, screenshots, and state files.
+playwright-browsers/
+playwright/.cache/
+test-results/
+playwright-report/
+screenshots/
+traces/
+*.har
+browser_state/
+storage_state*.json
+
+# ─── Testing & Coverage ─────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ─── IDE & Editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# ─── OS Generated ────────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+.DS_Store?
+._*
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.temp
