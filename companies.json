@@ -1,0 +1,96 @@
+{
+  "lever": [
+    "twilio",
+    "netflix",
+    "cloudflare",
+    "notion",
+    "figma",
+    "deel",
+    "stripe",
+    "databricks",
+    "discord",
+    "airtable"
+  ],
+  "greenhouse": [
+    "gitlab",
+    "hashicorp",
+    "datadog",
+    "mongodb",
+    "elastic",
+    "cockroachlabs",
+    "grafanalabs",
+    "snyk",
+    "sentry",
+    "remoteco"
+  ],
+  "ashby": [
+    "ramp",
+    "linear",
+    "vercel",
+    "resend",
+    "cal"
+  ],
+  "smartrecruiters": [
+    "Visa",
+    "Bosch",
+    "LIDL",
+    "Adidas"
+  ],
+  "recruitee": [
+    "tinybird",
+    "factorial"
+  ],
+  "workable": [
+    "cabify",
+    "wallapop"
+  ],
+  "keywords_include": [
+    "python",
+    "fullstack",
+    "full-stack",
+    "full stack",
+    "backend",
+    "back-end",
+    "back end",
+    "software engineer",
+    "software developer",
+    "web developer",
+    "developer",
+    "engineer",
+    "django",
+    "fastapi",
+    "flask"
+  ],
+  "keywords_exclude_seniority": [
+    "senior",
+    "sr.",
+    "sr ",
+    "staff",
+    "principal",
+    "lead",
+    "architect",
+    "director",
+    "vp ",
+    "vice president",
+    "head of",
+    "manager",
+    "distinguished",
+    "fellow"
+  ],
+  "locations": [
+    "spain",
+    "espana",
+    "españa",
+    "remote",
+    "remoto",
+    "madrid",
+    "barcelona",
+    "valencia",
+    "sevilla",
+    "europe",
+    "emea",
+    "worldwide",
+    "global",
+    "anywhere"
+  ]
+}
