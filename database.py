@@ -62,8 +62,32 @@ UPDATE offers
  WHERE id = ?;
 """
 
+_SELECT_ALL_SQL = """
+SELECT id, company_name, job_title, url, ats_type, location,
+       work_modality, status, created_at, applied_at, error_log
+  FROM offers
+ {where_clause}
+ ORDER BY created_at DESC;
+"""
 
-# ─── Database connection helper ──────────────────────────────────────────────
+_SELECT_BY_URL_SQL = """
+SELECT id, company_name, job_title, url, ats_type, location,
+       work_modality, status, created_at, applied_at, error_log
+  FROM offers
+ WHERE url = ?;
+"""
+
+_SUMMARY_SQL = """
+SELECT status, COUNT(*) as count
+  FROM offers
+ GROUP BY status;
+"""
+
+_DELETE_OFFER_SQL = """
+DELETE FROM offers WHERE id = ?;
+"""
+
+
 def _get_connection() -> sqlite3.Connection:
     """Open a connection to the SQLite database with recommended pragmas.
 
@@ -278,3 +302,128 @@ def update_offer_status(
         if conn is not None:
             conn.close()
             logger.debug("Database connection closed after update_offer_status()")
+
+
+def get_all_offers(status: str | None = None) -> list[dict]:
+    """Retrieve all offers, optionally filtered by status.
+
+    Args:
+        status: If provided, only return offers with this status.
+                Must be one of PENDING, APPLIED, FAILED, SKIPPED.
+
+    Returns:
+        A list of dicts, each representing one row from the offers table.
+    """
+    if status is not None and status not in VALID_STATUSES:
+        msg = (
+            f"Invalid status filter '{status}'. "
+            f"Must be one of: {', '.join(sorted(VALID_STATUSES))}"
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        if status:
+            query = _SELECT_ALL_SQL.format(where_clause="WHERE status = ?")
+            rows = conn.execute(query, (status,)).fetchall()
+        else:
+            query = _SELECT_ALL_SQL.format(where_clause="")
+            rows = conn.execute(query).fetchall()
+
+        results = [dict(row) for row in rows]
+        logger.debug("Retrieved %d offers (filter=%s)", len(results), status)
+        return results
+
+    except sqlite3.DatabaseError:
+        logger.exception("Error retrieving offers")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def get_offer_by_url(url: str) -> dict | None:
+    """Look up a single offer by its URL.
+
+    Useful for deduplication checks before inserting.
+
+    Args:
+        url: The job posting URL to search for.
+
+    Returns:
+        A dict with the offer data, or None if not found.
+    """
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        row = conn.execute(_SELECT_BY_URL_SQL, (url,)).fetchone()
+        if row:
+            return dict(row)
+        return None
+
+    except sqlite3.DatabaseError:
+        logger.exception("Error looking up offer by URL: %s", url)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def get_offers_summary() -> dict[str, int]:
+    """Get a count of offers grouped by status.
+
+    Returns:
+        A dict like ``{"PENDING": 12, "APPLIED": 3, "FAILED": 1, "SKIPPED": 0}``.
+        Statuses with zero offers are included with a count of 0.
+    """
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        rows = conn.execute(_SUMMARY_SQL).fetchall()
+        summary = {s: 0 for s in sorted(VALID_STATUSES)}
+        for row in rows:
+            summary[row["status"]] = row["count"]
+
+        logger.debug("Offers summary: %s", summary)
+        return summary
+
+    except sqlite3.DatabaseError:
+        logger.exception("Error generating offers summary")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def delete_offer(offer_id: int) -> bool:
+    """Delete an offer by its ID.
+
+    Args:
+        offer_id: Primary key of the offer to delete.
+
+    Returns:
+        True if the offer was deleted, False if no matching offer was found.
+    """
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute(_DELETE_OFFER_SQL, (offer_id,))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            logger.warning("No offer found with id=%s — delete skipped", offer_id)
+            return False
+
+        logger.info("Offer [id=%s] deleted", offer_id)
+        return True
+
+    except sqlite3.DatabaseError:
+        logger.exception("Error deleting offer id=%s", offer_id)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
