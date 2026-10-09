@@ -1,0 +1,22 @@
+.lj-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  width: 280px;
+  padding: 12px;
+  border-radius: 16px;
+  background: #fffaf3;
+  color: #1c1915;
+  border: 1px solid #ddd4c4;
+  box-shadow: 0 12px 30px rgba(28, 25, 21, 0.16);
+  font: 14px "Segoe UI", sans-serif;
+}
+
+.lj-panel button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.lj-panel p { margin: 8px 0 0; }
