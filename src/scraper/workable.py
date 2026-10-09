@@ -9,8 +9,11 @@ import logging
 
 from src.scraper.base import (
     BaseScraper,
+    clip_text,
+    collect_companies,
     create_http_client,
     get_companies,
+    get_with_retry,
     matches_filters,
 )
 
@@ -25,20 +28,14 @@ class WorkableScraper(BaseScraper):
     async def scrape_all(self) -> list[dict]:
         """Scrape all configured Workable companies."""
         companies = get_companies("workable")
-        all_jobs: list[dict] = []
-
         logger.info("[Workable] Starting scrape for %d companies", len(companies))
 
         async with create_http_client() as client:
-            for slug in companies:
-                try:
-                    jobs = await self._fetch_company(client, slug)
-                    all_jobs.extend(jobs)
-                except Exception:
-                    logger.exception("[Workable] Failed to scrape company: %s", slug)
-
-        logger.info("[Workable] Total filtered jobs found: %d", len(all_jobs))
-        return all_jobs
+            return await collect_companies(
+                "Workable",
+                companies,
+                lambda slug: self._fetch_company(client, slug),
+            )
 
     async def scrape_company(self, company_slug: str) -> list[dict]:
         """Scrape jobs from a single Workable company."""
@@ -64,7 +61,7 @@ class WorkableScraper(BaseScraper):
         }
         """
         url = _API_URL.format(company=company_slug)
-        response = await client.get(url)
+        response = await get_with_retry(client, url)
 
         if response.status_code == 404:
             logger.debug("[Workable] Company not found: %s", company_slug)
@@ -100,6 +97,7 @@ class WorkableScraper(BaseScraper):
                 "url": job_url,
                 "location": location,
                 "ats_type": "workable",
+                "description": clip_text(posting.get("description")),
             })
 
         logger.info(

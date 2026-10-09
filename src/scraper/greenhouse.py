@@ -9,8 +9,11 @@ import logging
 
 from src.scraper.base import (
     BaseScraper,
+    clip_text,
+    collect_companies,
     create_http_client,
     get_companies,
+    get_with_retry,
     matches_filters,
 )
 
@@ -25,20 +28,14 @@ class GreenhouseScraper(BaseScraper):
     async def scrape_all(self) -> list[dict]:
         """Scrape all configured Greenhouse companies."""
         companies = get_companies("greenhouse")
-        all_jobs: list[dict] = []
-
         logger.info("[Greenhouse] Starting scrape for %d companies", len(companies))
 
         async with create_http_client() as client:
-            for slug in companies:
-                try:
-                    jobs = await self._fetch_company(client, slug)
-                    all_jobs.extend(jobs)
-                except Exception:
-                    logger.exception("[Greenhouse] Failed to scrape company: %s", slug)
-
-        logger.info("[Greenhouse] Total filtered jobs found: %d", len(all_jobs))
-        return all_jobs
+            return await collect_companies(
+                "Greenhouse",
+                companies,
+                lambda slug: self._fetch_company(client, slug),
+            )
 
     async def scrape_company(self, company_slug: str) -> list[dict]:
         """Scrape jobs from a single Greenhouse company."""
@@ -63,7 +60,7 @@ class GreenhouseScraper(BaseScraper):
         }
         """
         url = _API_URL.format(company=company_slug)
-        response = await client.get(url)
+        response = await get_with_retry(client, url)
 
         if response.status_code == 404:
             logger.debug("[Greenhouse] Company not found: %s", company_slug)
@@ -96,6 +93,7 @@ class GreenhouseScraper(BaseScraper):
                 "url": absolute_url,
                 "location": location,
                 "ats_type": "greenhouse",
+                "description": clip_text(posting.get("content")),
             })
 
         logger.info(
