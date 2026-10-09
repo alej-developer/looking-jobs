@@ -5,7 +5,6 @@ Provides a consistent, colored log format across the entire application.
 """
 
 import logging
-import sys
 
 from rich.logging import RichHandler
 
@@ -35,7 +34,7 @@ def get_logger(name: str, level: str | None = None) -> logging.Logger:
             show_time=True,
             show_path=True,
             rich_tracebacks=True,
-            tracebacks_show_locals=True,
+            tracebacks_show_locals=False,
             markup=True,
             log_time_format="[%Y-%m-%d %H:%M:%S]",
         )

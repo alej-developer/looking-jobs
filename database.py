@@ -5,9 +5,11 @@ Manages the 'offers' table inside jobs_automation.db with:
 - Parameterized queries (?) to prevent SQL Injection.
 - Indexes on 'url' and 'status' for optimized lookups.
 - Exhaustive SQLite exception handling via the logging module.
-- Strict status validation: PENDING | APPLIED | FAILED | SKIPPED.
+- Strict status validation: PENDING | DRAFT | APPLIED | INTERVIEW |
+  REJECTED | OFFER | SKIPPED | FAILED.
 """
 
+import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
@@ -19,22 +21,79 @@ logger = logging.getLogger(__name__)
 _DB_DIR = Path(__file__).resolve().parent / "data"
 DB_PATH = _DB_DIR / "jobs_automation.db"
 
-VALID_STATUSES = frozenset({"PENDING", "APPLIED", "FAILED", "SKIPPED"})
+VALID_STATUSES = frozenset({
+    "PENDING",
+    "DRAFT",
+    "APPLIED",
+    "INTERVIEW",
+    "REJECTED",
+    "OFFER",
+    "SKIPPED",
+    "FAILED",
+})
+
+_OFFER_COLUMNS = (
+    "id",
+    "company_name",
+    "job_title",
+    "url",
+    "ats_type",
+    "location",
+    "work_modality",
+    "status",
+    "created_at",
+    "applied_at",
+    "error_log",
+    "description",
+    "fit_score",
+    "fit_summary",
+    "gap_notes",
+    "draft_body",
+)
 
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS offers (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_name TEXT    NOT NULL,
-    job_title    TEXT    NOT NULL,
-    url          TEXT    NOT NULL UNIQUE,
-    ats_type     TEXT,
-    location     TEXT,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name  TEXT    NOT NULL,
+    job_title     TEXT    NOT NULL,
+    url           TEXT    NOT NULL UNIQUE,
+    ats_type      TEXT,
+    location      TEXT,
     work_modality TEXT,
-    status       TEXT    NOT NULL DEFAULT 'PENDING'
-                         CHECK (status IN ('PENDING', 'APPLIED', 'FAILED', 'SKIPPED')),
-    created_at   TEXT    NOT NULL,
-    applied_at   TEXT,
-    error_log    TEXT
+    status        TEXT    NOT NULL DEFAULT 'PENDING'
+                          CHECK (status IN (
+                              'PENDING', 'DRAFT', 'APPLIED', 'INTERVIEW',
+                              'REJECTED', 'OFFER', 'SKIPPED', 'FAILED'
+                          )),
+    created_at    TEXT    NOT NULL,
+    applied_at    TEXT,
+    error_log     TEXT,
+    description   TEXT,
+    fit_score     INTEGER,
+    fit_summary   TEXT,
+    gap_notes     TEXT,
+    draft_body    TEXT
+);
+"""
+
+_CREATE_PROFILE_SQL = """
+CREATE TABLE IF NOT EXISTS candidate_profile (
+    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    full_name         TEXT NOT NULL DEFAULT '',
+    email             TEXT NOT NULL DEFAULT '',
+    phone             TEXT NOT NULL DEFAULT '',
+    origin_sector     TEXT NOT NULL DEFAULT '',
+    origin_role       TEXT NOT NULL DEFAULT '',
+    origin_years      INTEGER,
+    origin_highlights TEXT NOT NULL DEFAULT '',
+    target_roles      TEXT NOT NULL DEFAULT '',
+    target_sectors    TEXT NOT NULL DEFAULT '',
+    seniority         TEXT NOT NULL DEFAULT '',
+    constraints_text  TEXT NOT NULL DEFAULT '',
+    bridge_json       TEXT NOT NULL DEFAULT '[]',
+    anchors_json      TEXT NOT NULL DEFAULT '{}',
+    proof_json        TEXT NOT NULL DEFAULT '[]',
+    updated_at        TEXT NOT NULL
 );
 """
 
@@ -49,9 +108,9 @@ CREATE INDEX IF NOT EXISTS idx_offers_status ON offers (status);
 _INSERT_OFFER_SQL = """
 INSERT INTO offers (
     company_name, job_title, url, ats_type, location,
-    work_modality, status, created_at
+    work_modality, status, created_at, description
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 """
 
 _UPDATE_STATUS_SQL = """
@@ -62,19 +121,31 @@ UPDATE offers
  WHERE id = ?;
 """
 
-_SELECT_ALL_SQL = """
-SELECT id, company_name, job_title, url, ats_type, location,
-       work_modality, status, created_at, applied_at, error_log
+_SELECT_LIST = ", ".join(_OFFER_COLUMNS)
+
+_SELECT_ALL_SQL = f"""
+SELECT {_SELECT_LIST}
   FROM offers
- {where_clause}
- ORDER BY created_at DESC;
+ {{where_clause}}
+ ORDER BY created_at DESC
 """
 
-_SELECT_BY_URL_SQL = """
-SELECT id, company_name, job_title, url, ats_type, location,
-       work_modality, status, created_at, applied_at, error_log
+_SELECT_BY_URL_SQL = f"""
+SELECT {_SELECT_LIST}
   FROM offers
  WHERE url = ?;
+"""
+
+_SELECT_BY_ID_SQL = f"""
+SELECT {_SELECT_LIST}
+  FROM offers
+ WHERE id = ?;
+"""
+
+_COUNT_SQL = """
+SELECT COUNT(*) AS count
+  FROM offers
+ {where_clause}
 """
 
 _SUMMARY_SQL = """
@@ -111,10 +182,61 @@ def _get_connection() -> sqlite3.Connection:
 
 
 # ─── Public API ──────────────────────────────────────────────────────────────
+def _ensure_offers_schema(conn: sqlite3.Connection) -> None:
+    """Create or rebuild the offers table so new columns and statuses exist.
+
+    Column names interpolated into SQL come only from a fixed allow-list
+    intersected with the live table definition, never from user input.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'offers'"
+    ).fetchone()
+    if row is None:
+        conn.execute(_CREATE_TABLE_SQL)
+        return
+
+    current_sql = row[0] or ""
+    if "DRAFT" in current_sql and "fit_score" in current_sql:
+        return
+
+    conn.execute("ALTER TABLE offers RENAME TO offers_legacy")
+    conn.execute(_CREATE_TABLE_SQL)
+    legacy_cols = {info[1] for info in conn.execute("PRAGMA table_info(offers_legacy)")}
+    required = {
+        "id",
+        "company_name",
+        "job_title",
+        "url",
+        "ats_type",
+        "location",
+        "work_modality",
+        "status",
+        "created_at",
+        "applied_at",
+        "error_log",
+    }
+    if not required.issubset(legacy_cols):
+        raise sqlite3.DatabaseError("legacy offers table is missing required columns")
+    conn.execute(
+        """
+        INSERT INTO offers (
+            id, company_name, job_title, url, ats_type, location,
+            work_modality, status, created_at, applied_at, error_log
+        )
+        SELECT
+            id, company_name, job_title, url, ats_type, location,
+            work_modality, status, created_at, applied_at, error_log
+        FROM offers_legacy
+        """
+    )
+    conn.execute("DROP TABLE offers_legacy")
+
+
 def init_db() -> None:
     """Initialize the database: create the 'offers' table and indexes.
 
-    Safe to call multiple times — uses IF NOT EXISTS guards.
+    Safe to call multiple times — uses IF NOT EXISTS guards and a rebuild
+    migration when an older offers schema is already present.
 
     Raises:
         sqlite3.Error: If table or index creation fails.
@@ -123,7 +245,8 @@ def init_db() -> None:
     try:
         conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute(_CREATE_TABLE_SQL)
+        _ensure_offers_schema(conn)
+        cursor.execute(_CREATE_PROFILE_SQL)
         cursor.execute(_CREATE_INDEX_URL_SQL)
         cursor.execute(_CREATE_INDEX_STATUS_SQL)
         conn.commit()
@@ -151,6 +274,7 @@ def insert_offer(
     location: str | None = None,
     work_modality: str | None = None,
     status: str = "PENDING",
+    description: str | None = None,
 ) -> int | None:
     """Insert a new job offer into the 'offers' table.
 
@@ -190,7 +314,17 @@ def insert_offer(
         cursor = conn.cursor()
         cursor.execute(
             _INSERT_OFFER_SQL,
-            (company_name, job_title, url, ats_type, location, work_modality, status, created_at),
+            (
+                company_name,
+                job_title,
+                url,
+                ats_type,
+                location,
+                work_modality,
+                status,
+                created_at,
+                description,
+            ),
         )
         conn.commit()
         offer_id = cursor.lastrowid
@@ -427,3 +561,245 @@ def delete_offer(offer_id: int) -> bool:
         if conn is not None:
             conn.close()
 
+
+def get_offer_by_id(offer_id: int) -> dict | None:
+    """Return one offer by primary key, or None when it does not exist."""
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        row = conn.execute(_SELECT_BY_ID_SQL, (offer_id,)).fetchone()
+        return dict(row) if row else None
+    except sqlite3.DatabaseError:
+        logger.exception("Error looking up offer id=%s", offer_id)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def list_offers(
+    status: str | None = None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Return a page of offers and the total count for that filter."""
+    if status is not None and status not in VALID_STATUSES:
+        msg = (
+            f"Invalid status filter '{status}'. "
+            f"Must be one of: {', '.join(sorted(VALID_STATUSES))}"
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+
+    bounded_limit = min(max(int(limit), 1), 100)
+    bounded_offset = max(int(offset), 0)
+    where = "WHERE status = ?" if status else ""
+    params: tuple = (status,) if status else ()
+
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        total = conn.execute(
+            _COUNT_SQL.format(where_clause=where),
+            params,
+        ).fetchone()["count"]
+        rows = conn.execute(
+            _SELECT_ALL_SQL.format(where_clause=where) + " LIMIT ? OFFSET ?",
+            (*params, bounded_limit, bounded_offset),
+        ).fetchall()
+        return [dict(row) for row in rows], int(total)
+    except sqlite3.DatabaseError:
+        logger.exception("Error listing offers")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def update_offer_draft(offer_id: int, draft_body: str | None) -> bool:
+    """Replace the user-edited draft stored on an offer."""
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE offers SET draft_body = ? WHERE id = ?",
+            (draft_body, offer_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    except sqlite3.DatabaseError:
+        logger.exception("Error updating draft for offer id=%s", offer_id)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def save_offer_analysis(
+    offer_id: int,
+    *,
+    fit_score: int,
+    fit_summary: str,
+    gap_notes: str,
+    draft_body: str,
+) -> bool:
+    """Persist a locally computed fit analysis. Does not change status."""
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE offers
+               SET fit_score = ?,
+                   fit_summary = ?,
+                   gap_notes = ?,
+                   draft_body = ?
+             WHERE id = ?
+            """,
+            (fit_score, fit_summary, gap_notes, draft_body, offer_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    except sqlite3.DatabaseError:
+        logger.exception("Error saving analysis for offer id=%s", offer_id)
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+_PROFILE_DEFAULTS: dict = {
+    "full_name": "",
+    "email": "",
+    "phone": "",
+    "origin_sector": "",
+    "origin_role": "",
+    "origin_years": None,
+    "origin_highlights": "",
+    "target_roles": "",
+    "target_sectors": "",
+    "seniority": "",
+    "constraints_text": "",
+    "bridge": [],
+    "anchors": {},
+    "proof": [],
+    "updated_at": "",
+}
+
+
+def _profile_from_row(row: sqlite3.Row) -> dict:
+    """Decode a profile row. Corrupt JSON becomes empty collections."""
+    data = dict(_PROFILE_DEFAULTS)
+    skip = {"bridge", "anchors", "proof"}
+    present = {
+        key: row[key]
+        for key in row.keys()
+        if key in data and key not in skip
+    }
+    data.update(present)
+    for column, fallback in (("bridge_json", []), ("anchors_json", {}), ("proof_json", [])):
+        target = column.removesuffix("_json")
+        try:
+            parsed = json.loads(row[column] or "")
+        except json.JSONDecodeError:
+            parsed = fallback
+        if isinstance(parsed, type(fallback)):
+            data[target] = parsed
+        else:
+            data[target] = fallback
+    return data
+
+
+def get_profile() -> dict:
+    """Return the singleton candidate profile, or defaults when unset."""
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        row = conn.execute("SELECT * FROM candidate_profile WHERE id = 1").fetchone()
+        if row is None:
+            return dict(_PROFILE_DEFAULTS)
+        return _profile_from_row(row)
+    except sqlite3.DatabaseError:
+        logger.exception("Error reading candidate profile")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def save_profile(payload: dict) -> dict:
+    """Insert or replace the singleton profile. Caller must already validate fields."""
+    updated_at = datetime.now(timezone.utc).isoformat()
+    record = {
+        "full_name": payload.get("full_name", ""),
+        "email": payload.get("email", ""),
+        "phone": payload.get("phone", ""),
+        "origin_sector": payload.get("origin_sector", ""),
+        "origin_role": payload.get("origin_role", ""),
+        "origin_years": payload.get("origin_years"),
+        "origin_highlights": payload.get("origin_highlights", ""),
+        "target_roles": payload.get("target_roles", ""),
+        "target_sectors": payload.get("target_sectors", ""),
+        "seniority": payload.get("seniority", ""),
+        "constraints_text": payload.get("constraints_text", ""),
+        "bridge_json": json.dumps(payload.get("bridge", []), ensure_ascii=False),
+        "anchors_json": json.dumps(payload.get("anchors", {}), ensure_ascii=False),
+        "proof_json": json.dumps(payload.get("proof", []), ensure_ascii=False),
+        "updated_at": updated_at,
+    }
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _get_connection()
+        conn.execute(
+            """
+            INSERT INTO candidate_profile (
+                id, full_name, email, phone, origin_sector, origin_role, origin_years,
+                origin_highlights, target_roles, target_sectors, seniority,
+                constraints_text, bridge_json, anchors_json, proof_json, updated_at
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                full_name = excluded.full_name,
+                email = excluded.email,
+                phone = excluded.phone,
+                origin_sector = excluded.origin_sector,
+                origin_role = excluded.origin_role,
+                origin_years = excluded.origin_years,
+                origin_highlights = excluded.origin_highlights,
+                target_roles = excluded.target_roles,
+                target_sectors = excluded.target_sectors,
+                seniority = excluded.seniority,
+                constraints_text = excluded.constraints_text,
+                bridge_json = excluded.bridge_json,
+                anchors_json = excluded.anchors_json,
+                proof_json = excluded.proof_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                record["full_name"],
+                record["email"],
+                record["phone"],
+                record["origin_sector"],
+                record["origin_role"],
+                record["origin_years"],
+                record["origin_highlights"],
+                record["target_roles"],
+                record["target_sectors"],
+                record["seniority"],
+                record["constraints_text"],
+                record["bridge_json"],
+                record["anchors_json"],
+                record["proof_json"],
+                record["updated_at"],
+            ),
+        )
+        conn.commit()
+        return get_profile()
+    except sqlite3.DatabaseError:
+        logger.exception("Error saving candidate profile")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()

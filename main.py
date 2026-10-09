@@ -1,24 +1,25 @@
 """ATS Job Automator — CLI entry point.
 
 Usage:
-    python main.py scrape                     # All scrapers (6 APIs + Google Dorks)
+    python main.py scrape                     # Public ATS APIs
     python main.py scrape --lever             # Only Lever
     python main.py scrape --greenhouse        # Only Greenhouse
     python main.py scrape --ashby             # Only Ashby
     python main.py scrape --smartrecruiters   # Only SmartRecruiters
     python main.py scrape --recruitee         # Only Recruitee
     python main.py scrape --workable          # Only Workable
-    python main.py scrape --dorks             # Only Google Dorks (Playwright)
     python main.py list                       # Show all offers
     python main.py list --status PENDING      # Filter by status
     python main.py stats                      # Summary statistics
     python main.py export --format csv        # Export to CSV
     python main.py export --format json       # Export to JSON
+    python main.py serve                      # Local API on 127.0.0.1
 """
 
 import argparse
 import asyncio
 import logging
+import sqlite3
 import sys
 
 from rich.console import Console
@@ -64,7 +65,6 @@ async def _run_api_scrapers(platforms: list[str]) -> int:
         Total number of new offers inserted.
     """
     total_inserted = 0
-    total_found = 0
 
     for platform_name in platforms:
         scraper_cls = ALL_SCRAPERS.get(platform_name)
@@ -75,7 +75,6 @@ async def _run_api_scrapers(platforms: list[str]) -> int:
         scraper = scraper_cls()
         try:
             jobs = await scraper.scrape_all()
-            total_found += len(jobs)
 
             for job in jobs:
                 classification = classify_job(job["title"], job["url"])
@@ -91,27 +90,19 @@ async def _run_api_scrapers(platforms: list[str]) -> int:
                         ats_type=job.get("ats_type", platform_name),
                         location=job.get("location"),
                         work_modality=work_modality,
+                        description=job.get("description") or None,
                         status="PENDING",
                     )
                     total_inserted += 1
+                except sqlite3.IntegrityError:
+                    logger.info("Duplicate offer skipped for %s", job.get("url"))
                 except Exception:
-                    pass  # Duplicate or invalid — already logged by database module
+                    logger.exception("Failed to store offer from %s", platform_name)
 
         except Exception:
             logger.exception("Error running %s scraper", platform_name)
 
     return total_inserted
-
-
-async def _run_google_dorks() -> int:
-    """Run the Google Dorks scraper (Playwright).
-
-    Returns:
-        Total number of new offers inserted.
-    """
-    from scraper import run_scraper
-    result = await run_scraper()
-    return result.get("total_inserted", 0)
 
 
 def cmd_scrape(args: argparse.Namespace) -> None:
@@ -120,7 +111,6 @@ def cmd_scrape(args: argparse.Namespace) -> None:
 
     # Determine which platforms to scrape
     platforms_to_run: list[str] = []
-    run_dorks = False
 
     platform_flags = {
         "lever": args.lever,
@@ -134,12 +124,15 @@ def cmd_scrape(args: argparse.Namespace) -> None:
     any_flag = any(platform_flags.values()) or args.dorks
 
     if not any_flag:
-        # No flags = run everything
         platforms_to_run = list(ALL_SCRAPERS.keys())
-        run_dorks = True
     else:
         platforms_to_run = [name for name, flag in platform_flags.items() if flag]
-        run_dorks = args.dorks
+
+    if args.dorks:
+        console.print(
+            "[yellow]Google Dorks discovery is disabled. "
+            "Offers are collected from public ATS APIs only.[/yellow]"
+        )
 
     console.print()
     console.rule("[bold cyan]ATS Job Automator — Scraping[/bold cyan]")
@@ -156,13 +149,6 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         api_inserted = asyncio.run(_run_api_scrapers(platforms_to_run))
         total_inserted += api_inserted
         console.print(f"[green]API scrapers: {api_inserted} new offers inserted[/green]")
-
-    # Run Google Dorks
-    if run_dorks:
-        console.print("[bold]Running Google Dorks (Playwright)...[/bold]")
-        dork_inserted = asyncio.run(_run_google_dorks())
-        total_inserted += dork_inserted
-        console.print(f"[green]Google Dorks: {dork_inserted} new offers inserted[/green]")
 
     console.print()
     console.rule(f"[bold green]Total: {total_inserted} new offers[/bold green]")
@@ -275,6 +261,15 @@ def cmd_export(args: argparse.Namespace) -> None:
     console.print(f"[green]Exported to: {filepath}[/green]")
 
 
+# ─── Serve command ───────────────────────────────────────────────────────────
+
+def cmd_serve(_args: argparse.Namespace) -> None:
+    """Start the loopback API. The server refuses non-local binds."""
+    from src.api.server import run
+
+    run()
+
+
 # ─── Argument Parser ─────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
@@ -290,15 +285,28 @@ def build_parser() -> argparse.ArgumentParser:
     scrape_parser.add_argument("--lever", action="store_true", help="Scrape Lever only")
     scrape_parser.add_argument("--greenhouse", action="store_true", help="Scrape Greenhouse only")
     scrape_parser.add_argument("--ashby", action="store_true", help="Scrape Ashby only")
-    scrape_parser.add_argument("--smartrecruiters", action="store_true", help="Scrape SmartRecruiters only")
+    scrape_parser.add_argument(
+        "--smartrecruiters",
+        action="store_true",
+        help="Scrape SmartRecruiters only",
+    )
     scrape_parser.add_argument("--recruitee", action="store_true", help="Scrape Recruitee only")
     scrape_parser.add_argument("--workable", action="store_true", help="Scrape Workable only")
-    scrape_parser.add_argument("--dorks", action="store_true", help="Run Google Dorks (Playwright)")
+    scrape_parser.add_argument(
+        "--dorks",
+        action="store_true",
+        help="Disabled. Discovery uses public ATS APIs only",
+    )
     scrape_parser.set_defaults(func=cmd_scrape)
 
     # list
     list_parser = subparsers.add_parser("list", help="List job offers")
-    list_parser.add_argument("--status", type=str, default=None, help="Filter by status (PENDING, APPLIED, FAILED, SKIPPED)")
+    list_parser.add_argument(
+        "--status",
+        type=str,
+        default=None,
+        help="Filter by status (PENDING, APPLIED, FAILED, SKIPPED)",
+    )
     list_parser.set_defaults(func=cmd_list)
 
     # stats
@@ -307,9 +315,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     # export
     export_parser = subparsers.add_parser("export", help="Export offers to CSV or JSON")
-    export_parser.add_argument("--format", type=str, required=True, choices=["csv", "json"], help="Export format")
+    export_parser.add_argument(
+        "--format",
+        type=str,
+        required=True,
+        choices=["csv", "json"],
+        help="Export format",
+    )
     export_parser.add_argument("--status", type=str, default=None, help="Filter by status")
     export_parser.set_defaults(func=cmd_export)
+
+    serve_parser = subparsers.add_parser("serve", help="Run the local API on loopback")
+    serve_parser.set_defaults(func=cmd_serve)
 
     return parser
 
