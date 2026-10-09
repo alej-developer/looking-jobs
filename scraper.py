@@ -120,7 +120,9 @@ async def _extract_google_results(page: Page) -> list[dict[str, str]]:
 
             # Extract snippet if available
             snippet = ""
-            parent = await link.evaluate_handle("el => el.closest('div[data-snhf]') || el.parentElement")
+            parent = await link.evaluate_handle(
+                "el => el.closest('div[data-snhf]') || el.parentElement"
+            )
             if parent:
                 snippet_el = await parent.query_selector("span")
                 if snippet_el:

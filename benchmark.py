@@ -29,14 +29,16 @@ _RESULTS_FILE = _RESULTS_DIR / "benchmark_log.jsonl"
 # ─── Benchmark Wrapper ──────────────────────────────────────────────────────
 
 def _run_scraper_sync() -> dict[str, int]:
-    """Synchronous wrapper around the async scraper for memory_profiler compatibility.
+    """Run the public ATS API scrapers. Browser dork discovery is not used."""
+    from main import _run_api_scrapers
+    from src.scraper import ALL_SCRAPERS
 
-    Returns:
-        The summary dict from run_scraper().
-    """
-    from scraper import run_scraper
-
-    return asyncio.run(run_scraper())
+    inserted = asyncio.run(_run_api_scrapers(list(ALL_SCRAPERS)))
+    return {
+        "total_dorks": 0,
+        "total_inserted": inserted,
+        "total_errors": 0,
+    }
 
 
 def run_benchmark() -> dict:
@@ -60,7 +62,7 @@ def run_benchmark() -> dict:
     logger.info("=" * 60)
 
     # ── Capture baseline metrics ─────────────────────────────────────────
-    cpu_before = process.cpu_percent(interval=None)  # prime the counter
+    process.cpu_percent(interval=None)  # prime the counter
     baseline_mem = process.memory_info().rss / (1024 * 1024)  # MiB
 
     # ── Run scraper with memory profiling ────────────────────────────────

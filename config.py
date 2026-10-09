@@ -73,3 +73,10 @@ CANDIDATE_FULL_NAME: str = _get_env("CANDIDATE_FULL_NAME", required=True)
 CANDIDATE_EMAIL: str = _get_env("CANDIDATE_EMAIL", required=True)
 CANDIDATE_PHONE: str = _get_env("CANDIDATE_PHONE", default="")
 RESUME_FILE_PATH: str = _get_env("RESUME_FILE_PATH", default="")
+
+# ─── Local API ───────────────────────────────────────────────────────────────
+# The token is read again at request time from the environment so tests can
+# override it. An empty token must not boot the server.
+API_HOST: str = _get_env("API_HOST", default="127.0.0.1")
+API_PORT: int = int(_get_env("API_PORT", default="8000"))
+API_TOKEN: str = _get_env("API_TOKEN", default="")
