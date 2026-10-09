@@ -19,7 +19,7 @@ FROM mcr.microsoft.com/playwright/python:v1.52.0-noble AS runtime
 
 # Metadata
 LABEL maintainer="alej-developer"
-LABEL description="ATS Job Automator — Stealth scraper for corporate ATS portals"
+LABEL description="ATS Job Automator — public ATS API scraper"
 LABEL version="0.1.0"
 
 # Security: run as non-root user

@@ -8,9 +8,12 @@ Provides:
 - Shared httpx client factory with retry logic.
 """
 
+import asyncio
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import httpx
@@ -73,6 +76,30 @@ def get_locations() -> list[str]:
     return config.get("locations", [])
 
 
+def _term_in(haystack: str, term: str) -> bool:
+    """Match a configured keyword on word boundaries.
+
+    Terms that end in punctuation only require a leading boundary so values
+    like ``sr.`` still match.
+    """
+    cleaned = term.strip().lower()
+    if not cleaned:
+        return False
+    pattern = rf"\b{re.escape(cleaned)}"
+    if cleaned[-1].isalnum():
+        pattern += r"\b"
+    return re.search(pattern, haystack, re.IGNORECASE) is not None
+
+
+def clip_text(value: object, limit: int = 8000) -> str:
+    """Reduce ATS HTML to a bounded plain-text snippet."""
+    if not isinstance(value, str):
+        return ""
+    text = re.sub(r"<[^>]*>", " ", value)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
 def matches_filters(
     title: str,
     location: str = "",
@@ -97,21 +124,75 @@ def matches_filters(
 
     # 1. Must match at least one include keyword
     keywords = get_keywords_include()
-    if not any(kw.lower() in title_lower for kw in keywords):
+    if not any(_term_in(title_lower, kw) for kw in keywords):
         return False
 
     # 2. Must NOT match any seniority exclusion keyword
     exclusions = get_keywords_exclude()
-    if any(ex.lower() in title_lower for ex in exclusions):
+    if any(_term_in(title_lower, ex) for ex in exclusions):
         return False
 
     # 3. Location filter (skip if no location data available)
     if location_lower:
         locations = get_locations()
-        if not any(loc.lower() in location_lower for loc in locations):
+        if not any(_term_in(location_lower, loc) for loc in locations):
             return False
 
     return True
+
+
+async def get_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    attempts: int = 3,
+    sleep: Callable[[float], Awaitable[None]] | None = None,
+) -> httpx.Response:
+    """GET a public board URL, backing off on rate limits and transport errors."""
+    pause = sleep or asyncio.sleep
+    delay = 0.5
+    last_error: Exception | None = None
+    response: httpx.Response | None = None
+    for attempt in range(attempts):
+        try:
+            response = await client.get(url)
+        except httpx.TransportError as exc:
+            last_error = exc
+            response = None
+        if response is not None and response.status_code not in {429, 500, 502, 503, 504}:
+            return response
+        if attempt < attempts - 1:
+            await pause(delay)
+            delay = min(delay * 2, 8)
+    if response is not None:
+        return response
+    if last_error is not None:
+        raise last_error
+    raise httpx.TransportError("request failed without a response")
+
+
+async def collect_companies(
+    label: str,
+    companies: list[str],
+    fetch: Callable[[str], Awaitable[list[dict]]],
+    *,
+    concurrency: int = 4,
+) -> list[dict]:
+    """Fetch several companies at once, isolating a failure to one slug."""
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one(slug: str) -> list[dict]:
+        async with semaphore:
+            try:
+                return await fetch(slug)
+            except Exception:
+                logger.exception("[%s] Failed to scrape company: %s", label, slug)
+                return []
+
+    groups = await asyncio.gather(*(one(slug) for slug in companies))
+    jobs = [job for group in groups for job in group]
+    logger.info("[%s] Total filtered jobs found: %d", label, len(jobs))
+    return jobs
 
 
 def create_http_client() -> httpx.AsyncClient:

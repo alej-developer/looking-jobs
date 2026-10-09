@@ -23,7 +23,7 @@ _REMOTE_PATTERN = re.compile(
 )
 
 _HYBRID_PATTERN = re.compile(
-    r"\b(?:hybrid|híbrido|híbrida|semi[\s-]?presencial|flex[\s-]?office|"
+    r"\b(?:hybrid|híbrido|híbrida|hibrido|hibrida|semi[\s-]?presencial|flex[\s-]?office|"
     r"partial[\s-]?remote|mixed[\s-]?mode)\b",
     re.IGNORECASE,
 )
@@ -74,7 +74,7 @@ def classify_job(title: str, url: str) -> JobClassification:
     ``REMOTE`` > ``HYBRID`` > ``ON_SITE`` > ``UNKNOWN``
 
     Args:
-        title: The job posting title (e.g. "Senior Python Developer — Remote Spain").
+        title: The job posting title (e.g. "Junior Python Developer — Remote Spain").
         url: The full URL of the posting (may contain location slugs like
              ``/remote`` or ``/madrid``).
 
