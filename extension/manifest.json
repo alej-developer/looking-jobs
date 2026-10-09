@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Looking Jobs",
+  "version": "0.1.0",
+  "description": "Revisa una oferta y rellena campos. No envia la candidatura.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://jobs.lever.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Looking Jobs"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.lever.co/*"
+      ],
+      "js": ["content.js"],
+      "css": ["panel.css"]
+    }
+  ]
+}

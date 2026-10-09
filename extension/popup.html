@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Looking Jobs</title>
+  <style>
+    body { font: 14px "Segoe UI", sans-serif; width: 280px; margin: 12px; color: #1c1915; }
+    input, button { width: 100%; margin-top: 8px; }
+    p { color: #5c564c; }
+  </style>
+</head>
+<body>
+  <p>El token se guarda solo en la sesion del navegador y no se escribe en la pagina.</p>
+  <form id="token-form">
+    <label for="token">Token de la API local</label>
+    <input id="token" type="password" autocomplete="off" required>
+    <button type="submit">Guardar en esta sesion</button>
+  </form>
+  <p id="status"></p>
+  <script src="popup.js"></script>
+</body>
+</html>

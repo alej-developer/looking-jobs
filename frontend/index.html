@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Looking Jobs</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Cambio de sector</p>
+      <h1>Looking Jobs</h1>
+    </div>
+    <nav>
+      <button type="button" id="nav-board" class="nav is-active">Pipeline</button>
+      <button type="button" id="nav-profile" class="nav">Perfil</button>
+      <button type="button" id="nav-logout" class="nav ghost" hidden>Salir</button>
+    </nav>
+  </header>
+
+  <main id="login-view" class="panel login">
+    <h2>Acceso local</h2>
+    <p>El token no se guarda en el navegador. La sesión vive en una cookie HttpOnly de este proceso.</p>
+    <form id="login-form">
+      <label for="token">Token de API</label>
+      <input id="token" name="token" type="password" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </main>
+
+  <main id="board-view" class="layout" hidden>
+    <section class="list">
+      <div class="list-head">
+        <h2>Ofertas</h2>
+        <label>
+          Estado
+          <select id="status-filter">
+            <option value="">Todas</option>
+            <option value="PENDING">Guardadas</option>
+            <option value="DRAFT">Borrador</option>
+            <option value="APPLIED">Enviadas</option>
+            <option value="INTERVIEW">Entrevista</option>
+            <option value="OFFER">Oferta</option>
+            <option value="REJECTED">Rechazadas</option>
+            <option value="SKIPPED">Descartadas</option>
+            <option value="FAILED">Fallidas</option>
+          </select>
+        </label>
+      </div>
+      <ul id="offer-list"></ul>
+    </section>
+    <section id="detail" class="detail">
+      <p class="muted">Elige una oferta para revisar el encaje. El envío sigue siendo manual en la web de la empresa.</p>
+    </section>
+  </main>
+
+  <main id="profile-view" class="panel" hidden>
+    <h2>Perfil de pivote</h2>
+    <p>La carta solo puede usar lo que escribas aquí. No se inventan empleos ni métricas.</p>
+    <form id="profile-form"></form>
+  </main>
+
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
